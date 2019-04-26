@@ -1,0 +1,146 @@
+# Practical Machine Learning: Assignment
+
+## Synopsis
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.[More information](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) are available from this website.
+
+---
+
+
+## Dataset
+
+The [training data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and the [test data](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv) from the provided links and the [data](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) for this project come from the provided source.
+
+```{r, echo=FALSE, results='hide', warning=FALSE, message=FALSE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(e1071)
+library(gridExtra)
+library(gbm)
+```
+
+---
+
+
+## Loading the data and the packages
+
+We load the data as below:
+
+```{r}
+#Set the URL for the downloads
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+#Download the datasets
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+```
+
+The packages _knitr_, _caret_, _rpart_, _rpart.plot_, _rattle_, _randomForest_, _e1071_, _gridExtra_ and _gbm_ have to be loaded.
+
+---
+
+
+## Data partition and cleaning
+
+Regarding the course Practical Machine Learning, the data will be divided into a training data set and a testing data set with a rate 70%/30%.
+
+```{r}
+#Make the research reproducible
+set.seed(12345)
+partition  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+training_set <- training[partition, ]
+test_set  <- training[-partition, ]
+```
+
+These variables have a lot of NA, that can be removed as below:
+
+```{r}
+#Variables with Nearly Zero Variance are removed
+NZV <- nearZeroVar(training_set)
+training_set <- training_set[, -NZV]
+test_set  <- test_set[, -NZV]
+remove_NA    <- sapply(training_set, function(x) mean(is.na(x))) > 0.95
+training_set <- training_set[, remove_NA==FALSE]
+test_set  <- test_set[, remove_NA==FALSE]
+
+#ID variables (from 1 to 5) are removed
+training_set <- training_set[, -(1:5)]
+test_set  <- test_set[, -(1:5)]
+dim(training_set)
+dim(test_set)
+```
+
+The number of variables for the analysis has been reduced to 54 only.
+
+---
+
+
+## Building prediction models
+
+#### 1. Decision Tree model prediction
+
+```{r}
+model_decision_tree <- rpart(classe ~ ., data = training_set, method="class", control = rpart.control(method = "cv", number = 10))
+fancyRpartPlot(model_decision_tree)
+```
+
+We do not expect a very high accuracy.
+
+```{r}
+prediction_decision_tree <- predict(model_decision_tree, test_set, type = "class")
+confusion_matrix_DT <- confusionMatrix(prediction_decision_tree, test_set$classe)
+confusion_matrix_DT
+```
+
+The accuracy reaches 73.68%.
+
+#### 2. Random Forest model prediction
+
+```{r}
+model_random_forest <- randomForest(classe ~ ., data = training_set, method = "rf", importance = T, trControl = trainControl(method = "cv", classProbs=TRUE,savePredictions=TRUE,allowParallel=TRUE, number = 10))
+plot(model_random_forest)
+```
+
+Using random forest, the out of sample error is small as it is expected.
+
+```{r}
+prediction_random_forest <- predict(model_random_forest, newdata=test_set)
+confusion_matrix_RF <- confusionMatrix(prediction_random_forest, test_set$classe)
+confusion_matrix_RF
+```
+
+The accuracy reaches 99.52%.
+
+#### 3. Boosting model prediction
+
+```{r}
+control_boosting <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+model_boosting <- train(classe ~ ., data=training_set, method = "gbm", trControl = control_boosting, verbose = FALSE)
+plot(model_boosting)
+```
+
+```{r}
+prediction_boosting <- predict(model_boosting, test_set)
+confusion_matrix_boosting <- confusionMatrix(prediction_boosting, test_set$classe)
+confusion_matrix_boosting
+```
+
+The accuracy reaches 98.2%
+
+---
+
+
+## Prediction with the best model
+
+The Random Forest model provides the best accuracy. Hence we expect to get a perfect prediction as below:
+
+```{r}
+prediction_test <- predict(model_random_forest, newdata=testing)
+prediction_test
+```
+
+Finally, we got a perfect score in the quiz.
